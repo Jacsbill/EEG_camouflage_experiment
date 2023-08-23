@@ -44,6 +44,10 @@ Grant no.:  RF-2019-343
 
 Files for running described experiment. 
 
-EEGtesting_Lev_20210831.m was run in Psychtool box (see supplementary 1) with each participant presented with a randomly selected subset of images from folder EEimages3 
- 
+EEGtesting_Lev_20210831.m was run in Psychtool box (see supplementary 1) with each participant presented with a randomly selected subset of images from folder:
+
+.................
+EEimages3 
 imagemats.mats also contains a copy of these images and the file uploaded during the experiment for presentation.
+
+The above are large files and can requested from the author if required. They are not uploaded here. 
