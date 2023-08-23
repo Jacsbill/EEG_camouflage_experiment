@@ -1,0 +1,16 @@
+All you have to do is press 'x' if the camouflage first triangle and grey second triangle match orientation. 
+Press 'z' if they do not match. 
+This response should be as rapid as accurate as you can be after you see the grey triangle.  
+
+After this you will asked about how certain you were in your decision (1=Guessed, 2=Fairly sure, 3=Certain).
+This second response is not timed. Just choose what you intuitively felt, don't overthink it. 
+
+Leave fingers of each hand on each button for quick responses.
+
+The first triangle will be cued as to which side the target triangle is going to appear on. 
+
+REMEMBER!: Although it is tempting, always look at the central fixation cross. We are assessing your 
+ability to make decisions on what you can see in you peripheral vision (edges of you vision). 
+
+PRESS SPACE TO CONTINUE: Experiment will start after 6 seconds to give you time to get you fingers 
+comfortable on the keys.

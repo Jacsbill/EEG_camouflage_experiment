@@ -1,0 +1,939 @@
+%%% j billington 07/09/2021
+%%% tiggers-they like to bounce
+%%% 254 - start EEG record
+%%% 126 - EEG stop record
+%%% 10 - response
+%%% 8 - trial incorrect
+%%% 9 - trial correct
+%%% 1 - trial start
+%%% 2 - crosshair on (cue onset)
+%%% 11 - cue offset
+%%% 3 - Stim onset
+%%% 4 -stim offset
+%%% 20 - left cue
+%%% 21 - right cue
+%%% 25-left target
+%%% 26-right target 
+%%% 27 - no cue
+%%% 5/6 - congruent/ incongruent up or down
+%%% 34/35 correct/ incorrect side of cue
+%%% 29/30 Top or bottom presnetation for four tiles. 
+%%% 100 - end of trial 
+
+
+% clc 
+clear all
+Screen('CloseAll');
+%%% ----------------------------------------------------------------------
+%%% Set up the port
+% config_io
+% global cogent;
+% disp(cogent.io.status); % 0 = configured ok
+% address = hex2dec('E020');
+%%% demo output -comment out
+% for i = 255:-1:1
+%     %outp(address, i)
+%     WaitSecs(.1);
+%     %outp(address, 0);   %%% clear port afterwards. 
+%     WaitSecs(1);
+%     disp(i)
+% end
+
+%%% ----------------------------------------------------------------------
+%%% clear anything you have open and make sure you have paths added to
+%%% psychtoolbox
+%% ----------------------------------------------------------------------
+addpath('C:\Users\biosemieeg\Desktop\jac\Leverhulme\'); %%% just to pick up sanofi jpoegs for now
+addpath('C:\Users\biosemieeg\Desktop\parallelportkit\');
+% imgpath=('C:\Users\pscjbi.PSC-LAP-501443\Documents\Leverhulme Fellowship\LeverhulmeEEG\');
+imgpath=('C:\Users\pscjbi.PSC-LAP-501443\Documents\Leverhulme Fellowship\code\webster_moth_working _gor_adapt\EEGimages3');
+
+AssertOpenGL; %%% for the grafix!
+
+% addpath('C:\Program Files\MATLAB\R2019b\toolbox\Psychtoolbox-3-3.0.17.6\Psychtoolbox');
+% addpath('C:\Program Files\MATLAB\R2019b\toolbox\Psychtoolbox-3-3.0.17.6\Psychtoolbox\PsychGLImageProcessing\private');
+% addpath('C:\Users\biosemieeg\Desktop\jac\SANOFI\EEG_scripts_programming'); %%% just to pick up sanofi jpoegs for now
+% addpath('C:\Users\biosemieeg\Desktop\parallelportkit');
+% % imgpath=('C:\Users\pscjbi.PSC-LAP-501443\Documents\Leverhulme Fellowship\LeverhulmeEEG\');
+% imgpath=('C:\Users\pscjbi.PSC-LAP-501443\Documents\Leverhulme Fellowship\code\webster_moth_working _gor_adapt\EEGimages2\');
+% AssertOpenGL; %%% for the grafix!
+
+%% -----------------------------------------------------------------------
+%%% Save info
+%% --------------------------------------------------------------
+subject=input('Participant ID   ','s');
+savefile = [(subject) '_AB_output.mat'];
+savefile2 = [(subject) '_AB_output.xlsx'];
+savefile3 = [(subject) '_ABstimorder_output.mat'];
+fullscreen=input('Fullscreen? y/n    ','s');
+% tiles=input('number of tiles? 2/4/6    ','s');
+tiles='4';
+
+load ('C:\Users\pscjbi.PSC-LAP-501443\Documents\Leverhulme Fellowship\code\webster_moth_working _gor_adapt\EEGimages3\blankforeeg.mat');
+load ('C:\Users\pscjbi.PSC-LAP-501443\Documents\Leverhulme Fellowship\code\webster_moth_working _gor_adapt\EEGimages3\triforeeg.mat');
+%% ------------------------------------------------------------------------
+%%% tell psychinfo / grab  - some information about the screen
+%%------------------------------------------------------------------------
+if fullscreen=='y';
+  screen.scrwid=round(1920);  %%% width and height of the screen in pixels (800x600 it smaller so you can crash when testing code)
+  screen.scrhei=round(1080);
+%   load('polyinfo19201080_rad250.mat');
+else
+  screen.scrwid=round(1810)%(1600); %;  %%% width and height of the screen in pixels (800x600 it smaller so you can crash when testing code)
+  screen.scrhei=round(1023) %(900); %;
+   screen.scrwid=round(1600); %;  %%% width and height of the screen in pixels (800x600 it smaller so you can crash when testing code)
+  screen.scrhei=round(900); %;
+%   load('polyinfo1600900.mat');
+end
+screen.mon_width = 39; % horizontal dimension of viewable screen (cm)
+screen.v_dist = 60; % viewing distance (cm)
+screen.doublebuffer=2;
+screen.screens=Screen('Screens');
+screen.screenNumber=max(screen.screens);  
+screen.pixelSize=Screen('PixelSize', screen.screenNumber);
+[screen.w, screen.rect] = Screen('OpenWindow', screen.screenNumber, 0,[ 0 0 screen.scrwid screen.scrhei], screen.pixelSize, screen.doublebuffer); 
+screen.windowPtrs=screen.w;
+screen.waitframes=1;
+% Select specific text font, style and size:
+Screen('TextFont',screen.w, 'Courier New');
+screen.hText=60;
+Screen('TextSize',screen.w, 20);
+Screen('TextStyle', screen.w, 1+2);
+Screen('BlendFunction', screen.w, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+[screen.center(1), screen.center(2)] = RectCenter(screen.rect);
+[screen.width,screen.height] = RectSize(screen.rect);
+screen.fps=Screen('FrameRate',screen.windowPtrs); % 
+screen.fl=1/screen.fps;
+
+%%% ----------------------------------------------------------------------
+%%% set up a few parameters you might want to change - timing between
+%%% stimuli/ where they are on the screen etc. 
+%% ----------------------------------------------------------------------
+param.notrials=300; %%% must be devisible by 2 and 3
+
+param.precuelen=0.6; %%% sec pre cue length
+param.cuelen=0.8; %%% sec cue on before stimulus
+param.cuegap=1.0;
+param.targetlength=0.2; %%% sec  stimulus length
+param.intertrlength=2.0;  %%% sec post stimulus length
+
+%jitter added in loop.
+
+%%% in frames
+param.precuelenF=round(param.precuelen*screen.fps);
+param.cuelenF=param.precuelenF+round(param.cuelen*screen.fps);
+param.cuegapF=param.cuelenF+round(param.cuegap*screen.fps);
+param.targetlengthF=param.cuegapF+round((param.targetlength)*(screen.fps));
+param.intertrlengthF=round(param.intertrlength*screen.fps); 
+
+
+param.rad=350;  %radius of stimlus
+
+screen.ifi=Screen('GetFlipInterval', screen.windowPtrs);  
+screen.black = BlackIndex(screen.windowPtrs);
+screen.white = [150,150,150];%%%%%WhiteIndex(windowPtrs);
+HideCursor; % Hide the mouse cursor
+Priority(MaxPriority(screen.windowPtrs));
+screen.vbl=Screen('Flip',screen.windowPtrs); % Do initial flip...
+[wW, wH]=WindowSize(screen.w);
+%% -------------------------------------------------------------
+% % % set display properties of stimuli
+%% ----------------------------------------------------------------
+disp.fix_r = 0.15; % radius of fixation point (deg)
+disp.fix_l = disp.fix_r*8;
+
+% convert all this to pixels later
+disp.pixpdeg = pi * (screen.rect(3)-screen.rect(1)) / atan(screen.mon_width/screen.v_dist/2) / 360; % pixels per degree
+disp.fix_cord = [screen.center-disp.fix_r*disp.pixpdeg screen.center+disp.fix_r*disp.pixpdeg];
+disp.lft_cord = round(screen.center(1)-disp.pixpdeg-(screen.hText/1.6));
+disp.rgt_cord = disp.pixpdeg+screen.center(1); %%% fixation coordinate.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% load images (these are reshuffed to match the str load order.
+%% CODE WONT WORK ON eeg MACHINE (EXTRACTBETWEEN) CREATED ON LAPTOP USING
+%% BELOW
+
+files = [dir(fullfile(imgpath, '*2.jpg')); dir(fullfile(imgpath, '*1.jpg'))];
+for i=1:length(files);
+    newStr = extractBetween(files(i).name,'I', '_');
+    newStr2 = extractBetween(files(i).name,'_', '.');
+    ii=str2double(newStr);
+    updownorder(ii,1)=str2double(newStr2);
+    imgtri{ii}(:,:,:)=imread(fullfile(imgpath,(files(i).name)));
+end
+imgblank={};
+files2= dir (fullfile(imgpath, '*3.jpg'));
+for i=1:length(files2)
+    newStr = extractBetween(files2(i).name,'I', '_');
+    ii=str2double(newStr);
+    imgblank{ii}(:,:,1)=imread(fullfile(imgpath,(files2(i).name)));
+end
+
+save imagemats imgblank imgtri updownorder
+% load('imagemats.mat')
+
+T.updownorder=updownorder;
+
+%% ---------------------------------------------------------
+%%% Stimuli info
+%% ---------------------------------------------------------
+%%%% select images from bins- should have 75 stim.
+stimchoice=[];
+blankmatch=[];
+updown=[];
+hm=[];
+cn=[];
+rot=[];
+pickno=[2 13 15 15 15 15];
+for i=1:4 %this gives 400 stimuli
+    for i=1:6
+        binfind=T.bin==i;
+        x=T.i(binfind);
+        x2=T.match(binfind);
+        x3=T.updownorder(binfind);
+        x4=T.hmax1(binfind);
+        x5=T.canny(binfind);
+        x6=T.rotation(binfind);
+        msize = numel(x);
+        idx = randperm(msize);
+        s=x(idx(1:pickno(i)));
+        s2=x2(idx(1:pickno(i)));
+        s3=x3(idx(1:pickno(i)));
+        s4=x4(idx(1:pickno(i)));
+        s5=x5(idx(1:pickno(i)));
+        s6=x6(idx(1:pickno(i)));
+        stimchoice=vertcat(stimchoice,s);
+        blankmatch=vertcat(blankmatch,s2);
+        updown=vertcat(updown,s3);
+        hm=vertcat(hm,s4);
+        cn=vertcat(cn,s5);
+        rot=vertcat(cn,s6);
+    end
+end
+msize=numel(stimchoice);idx = randperm(msize);
+stim.trialorder=stimchoice(idx);
+stim.matchbark=blankmatch(idx);  
+stim.updownorder=updown(idx); 
+stim.hmax=hm(idx); 
+stim.canny=cn(idx); 
+stim.rot=rot(idx);
+
+idx=randperm(size(Tb2,1));
+imgone=Tb2.Var4(idx);
+imgtwo=Tb2.neighbour(idx);
+stim.matchbark2=imgone(1:param.notrials);
+stim.matchbark3=imgtwo(1:param.notrials);
+idx=randperm(size(Tb2,1));
+imgone=Tb2.Var4(idx);
+imgtwo=Tb2.neighbour(idx);
+stim.matchbark4=imgone(1:param.notrials);
+stim.matchbark5=imgtwo(1:param.notrials);   
+
+
+r=1:param.notrials; r2=[zeros(1,length(r)/2) ones(1,length(r)/2)]; r3=[zeros(1,length(r)/3) ones(1,length(r)/3) 2*ones(1,length(r)/3)];
+r4=[zeros(1,length(r)/2) 2*ones(1,length(r)/2)];
+stim.side=r2(randperm(length(r2)));
+stim.hoz=r3(randperm(length(r3)));
+stim.hoz2=r4(randperm(length(r4)));
+stim.side2=stim.side;
+flipped=randperm(length(r),round(length(r)*0.15));
+stim.side2(flipped)=~stim.side2(flipped);  %%% Jac
+
+
+
+
+
+
+expoutput=zeros(param.notrials,13);
+[iy, ix, id]=size(imgtri{1}(:,:,1));
+
+
+%% this is coordinate info for images. WONT WORK ON eeg MACHINE LOADED FROM LAPTOP
+numstim=2;
+    if tiles=='4';
+        pgon = nsidedpoly(4,'Center',[screen.scrwid/2 screen.scrhei/2],'Radius',param.rad);
+        vertices=pgon.Vertices;
+
+        RB=[round(pgon.Vertices(3,1)-(ix/2)) round(pgon.Vertices(3,2)-(iy/2)) round(pgon.Vertices(3,1)-(ix/2))+(ix) round(pgon.Vertices(3,2)-(iy/2))+(iy)];    %pgon4
+        RT=[round(pgon.Vertices(4,1)-(ix/2)) round(pgon.Vertices(4,2)-(iy/2)) round(pgon.Vertices(4,1)-(ix/2))+(ix) round(pgon.Vertices(4,2)-(iy/2))+(iy)];  %pgon6
+        LT=[round(pgon.Vertices(1,1)-(ix/2)) round(pgon.Vertices(1,2)-(iy/2)) round(pgon.Vertices(1,1)-(ix/2))+(ix) round(pgon.Vertices(1,2)-(iy/2))+(iy)];%pgon1
+        LB=[round(pgon.Vertices(2,1)-(ix/2)) round(pgon.Vertices(2,2)-(iy/2)) round(pgon.Vertices(2,1)-(ix/2))+(ix) round(pgon.Vertices(2,2)-(iy/2))+(iy)]; %pgon3
+
+  
+    else
+        pgon = nsidedpoly(6,'Center',[screen.scrwid/2 screen.scrhei/2],'Radius',param.rad);
+        vertices=pgon.Vertices;
+        % pgon.Vertices=vertices;
+        RM=[round(pgon.Vertices(5,1)-(ix/2)) round(pgon.Vertices(5,2)-(iy/2)) round(pgon.Vertices(5,1)-(ix/2))+(ix) round(pgon.Vertices(5,2)-(iy/2))+(iy)];   %pgon5
+        RB=[round(pgon.Vertices(4,1)-(ix/2)) round(pgon.Vertices(4,2)-(iy/2)) round(pgon.Vertices(4,1)-(ix/2))+(ix) round(pgon.Vertices(4,2)-(iy/2))+(iy)];    %pgon4
+        RT=[round(pgon.Vertices(6,1)-(ix/2)) round(pgon.Vertices(6,2)-(iy/2)) round(pgon.Vertices(6,1)-(ix/2))+(ix) round(pgon.Vertices(6,2)-(iy/2))+(iy)];  %pgon6
+        LM=[round(pgon.Vertices(2,1)-(ix/2)) round(pgon.Vertices(2,2)-(iy/2)) round(pgon.Vertices(2,1)-(ix/2))+(ix) round(pgon.Vertices(2,2)-(iy/2))+(iy)]; %pgon2
+        LT=[round(pgon.Vertices(1,1)-(ix/2)) round(pgon.Vertices(1,2)-(iy/2)) round(pgon.Vertices(1,1)-(ix/2))+(ix) round(pgon.Vertices(1,2)-(iy/2))+(iy)];%pgon1
+        LB=[round(pgon.Vertices(3,1)-(ix/2)) round(pgon.Vertices(3,2)-(iy/2)) round(pgon.Vertices(3,1)-(ix/2))+(ix) round(pgon.Vertices(3,2)-(iy/2))+(iy)]; %pgon3
+
+    end
+
+hText=60;
+%just to check locations - hex is flipped on grah on horizontal axis.
+%scatter(LM(1), LM(2),'b'); hold on; scatter(LT(1), LT(2),'r');hold on; scatter(LB(1), LB(2),'y');
+%scatter(RM(1), RM(2),'c'); hold on; scatter(RT(1), RT(2),'g');hold on; scatter(RB(1), RB(2),'k');
+%scatter(LM(3), LM(4),'b','*'); hold on; scatter(LT(3), LT(4),'r','*');hold on; scatter(LB(3), LB(4),'y','*');
+%scatter(RM(3), RM(4),'c','*'); hold on; scatter(RT(3), RT(4),'g','*');hold on; scatter(RB(3), RB(4),'k','*');
+%  pgon.Vertices=vertices;
+%  save('poly_6tile_300.mat','vertices');
+param.vertices=vertices;
+
+
+save(savefile3,'param','stim');
+
+%%%load cues.
+xcue=imread('crosshair.jpg');
+[cy, cx, cd]=size(xcue);
+ucue=imread('upcue.jpg');
+[cyu, cxu, cdu]=size(ucue);
+dcue=imread('downcue.jpg');
+[cueloc dx dy]=CenterRect([0 0 cx cy], screen.rect);
+CRB=[round(pgon.Vertices(3,1)-(cxu/2)) round(pgon.Vertices(3,2)-(cyu/2)) round(pgon.Vertices(3,1)-(cxu/2))+(cxu) round(pgon.Vertices(3,2)-(cyu/2))+(cyu)];    %pgon4
+CRT=[round(pgon.Vertices(4,1)-(cxu/2)) round(pgon.Vertices(4,2)-(cyu/2)) round(pgon.Vertices(4,1)-(cxu/2))+(cxu) round(pgon.Vertices(4,2)-(cyu/2))+(cyu)];  %pgon6
+CLT=[round(pgon.Vertices(1,1)-(cxu/2)) round(pgon.Vertices(1,2)-(cyu/2)) round(pgon.Vertices(1,1)-(cxu/2))+(cxu) round(pgon.Vertices(1,2)-(cyu/2))+(cyu)];%pgon1
+CLB=[round(pgon.Vertices(2,1)-(cxu/2)) round(pgon.Vertices(2,2)-(cyu/2)) round(pgon.Vertices(2,1)-(cxu/2))+(cxu) round(pgon.Vertices(2,2)-(cyu/2))+(cyu)]; %pgon3
+
+
+%%%-------------------------------------------------------
+%%% recap instructions
+%%% ----------------------------------------------------------------------
+fd = fopen(['instructions.txt'], 'rt');
+
+
+  text = '';
+  tl = fgets(fd);
+  lcount = 0;
+  while (tl~=-1) & (lcount < 20 )
+      text = [text tl];
+      tl = fgets(fd); 
+      lcount = lcount + 1;
+  end
+  fclose(fd);
+  text = [text char(10)];   
+
+
+
+[nx, ny, bbox] = DrawFormattedText(screen.w, text, 40, 40, 255, 150);
+ Screen('Flip',screen.w);
+      
+[Keypr KeyTime Key] = KbCheck;
+while any(Key) % if already down, wait for release
+      [Keypr KeyTime Key] = KbCheck;
+end
+while ~any(Key); [Keypr KeyTime Key] = KbCheck; end; %%%% wait for press
+while any(Key); [Keypr KeyTime Key]= KbCheck; end; %%% wait for release
+             
+
+             
+
+
+%%%-------------------------------------------------------
+%%% wait for mouse click to start exp
+%%% ----------------------------------------------------------------------
+
+WaitSecs(1);
+count =0; %%% this just counts up the trials
+
+%% EEG ping
+%outp(address, 254) 
+WaitSecs(.1);
+%outp(address, 0);
+
+WaitSecs(3);
+
+text= 'Get Ready!'; 
+     [nx, ny, bbox] = DrawFormattedText(screen.w, text, 'center', 'center', 255, 150);
+    Screen('Flip',screen.w);
+WaitSecs(1);
+text= 'Get Ready!'; 
+     [nx, ny, bbox] = DrawFormattedText(screen.w, text, 'center', 'center', 0, 150);
+    Screen('Flip',screen.w);
+
+mouse=tic;  %%% time of the mouse click.
+tic
+WaitSecs(4);
+Screen('TextSize',screen.w, 80);
+output=[];
+
+stim.side
+% %     
+%%% ----------------------------------------------------------------------
+%%% set up a loop to run x amount of trials
+%%% ----------------------------------------------------------------------
+textrem=[];
+
+%% just for testing sides etc.
+% stim.hoz=[0 1 2];
+% stim.hoz2=[0 0 0]
+% stim.side=[1 1 1];
+% stim.side2=[1 1 0];
+
+for j = 1:param.notrials;
+    
+      % %%% reset some values
+  output.stimstart=0;
+  output.cuestart=0;
+  output.corr=0;
+  output.resptime=0;
+  output.response=0;
+  letterCresp=0;
+  letterUD=0;
+  output.certain=0;
+    
+    if j==100 || j==180 || j==240 || j==300 || j==375;
+    %% put in rests
+  Screen('TextSize',screen.w, 20);
+  text= 'Rest break! rest you eyes but try not to move you head too much \n\nPRESS SPACE to continue \n\n(Trials will commence after 6 seconds)'; 
+  [nx, ny, bbox] = DrawFormattedText(screen.w, text, 'center', 'center', 255, 150);
+  Screen('Flip',screen.w);
+  [Keypr KeyTime Key] = KbCheck;
+    while any(Key) % if already down, wait for release
+          [Keypr KeyTime Key] = KbCheck;
+    end
+    while ~any(Key); [Keypr KeyTime Key] = KbCheck; end; %%%% wait for press
+    while any(Key); [Keypr KeyTime Key]= KbCheck; end; %%% wait for release
+    WaitSecs(6)
+    end
+
+  Screen('TextSize',screen.w, 80);
+  %%some parameters
+  param.f_no=param.targetlengthF+param.intertrlengthF;
+          
+  count=count+1;
+
+ letters={'U','D'};
+  sl=randperm(2);
+  letter=letters{sl(1)};
+  if letter=='D' && stim.updownorder(count)==2;
+      letterCresp=5; %conguent
+      letterUD=33;
+  elseif letter=='U' && stim.updownorder(count)==1;
+      letterCresp=5; %conguent
+      letterUD=34;
+  elseif letter=='U' && stim.updownorder(count)==2;
+      letterCresp=6; %incongruent
+      letterUD=34;
+  elseif letter=='D' && stim.updownorder(count)==1;
+      letterCresp=6; %incongruent
+      letterUD=33;
+  end
+  
+  
+  sd=stim.side(count); %0=left 1=right CUE SIDE
+  if sd==0;
+    EEGside=20;
+  else
+    EEGside=21;
+  end
+  
+  sd2=stim.side2(count); %0=left 1=right  TARGET SIDE 
+   if sd2==0;
+    EEGside2=25;
+  else
+    EEGside2=26;
+  end
+  
+  tr=stim.trialorder(count);
+  ud=stim.updownorder(count);
+  
+
+     hz=stim.hoz2(count);
+     if hz==0;
+         EEGTB=29;
+     else
+         EEGTB=30;
+     end
+
+  
+
+
+  
+  %set up textures.
+  if tiles=='2';
+      imdataT=imgtri{stim.trialorder(count)};  %triangle
+      imagetexT=Screen('MakeTexture', screen.w, imdataT(1:iy, 1:ix,:));
+      trectT=Screen('Rect', imagetexT);
+      imdataB=imgblank{stim.matchbark(count)};  %blank
+      imagetexB=Screen('MakeTexture', screen.w, imdataB(1:iy, 1:ix,:));
+      trectB=Screen('Rect', imagetexB);
+  elseif tiles=='4';
+      imdataT=imgtri{stim.trialorder(count)};  %triangle
+      imagetexT=Screen('MakeTexture', screen.w, imdataT(1:iy, 1:ix,:));
+      trectT=Screen('Rect', imagetexT);
+      imdataB=imgblank{stim.matchbark(count)};  %blank
+      imagetexB=Screen('MakeTexture', screen.w, imdataB(1:iy, 1:ix,:));
+      trectB=Screen('Rect', imagetexB);
+      imdataB1=imgblank{stim.matchbark2(count)};  %blank
+      imagetexB1=Screen('MakeTexture', screen.w, imdataB1(1:iy, 1:ix,:));
+      trectB1=Screen('Rect', imagetexB1);
+      imdataB2=imgblank{stim.matchbark3(count)};  %blank
+      imagetexB2=Screen('MakeTexture', screen.w, imdataB2(1:iy, 1:ix,:));
+      trectB2=Screen('Rect', imagetexB2);
+  else;
+      imdataT=imgtri{stim.trialorder(count)};  %triangle
+      imagetexT=Screen('MakeTexture', screen.w, imdataT(1:iy, 1:ix,:));
+      trectT=Screen('Rect', imagetexT);
+      imdataB=imgblank{stim.matchbark(count)};  %blank
+      imagetexB=Screen('MakeTexture', screen.w, imdataB(1:iy, 1:ix,:));
+      trectB=Screen('Rect', imagetexB);
+      imdataB1=imgblank{stim.matchbark2(count)};  %blank
+      imagetexB1=Screen('MakeTexture', screen.w, imdataB1(1:iy, 1:ix,:));
+      trectB1=Screen('Rect', imagetexB1);
+      imdataB2=imgblank{stim.matchbark3(count)};  %blank
+      imagetexB2=Screen('MakeTexture', screen.w, imdataB2(1:iy, 1:ix,:));
+      trectB2=Screen('Rect', imagetexB2);
+      imdataB3=imgblank{stim.matchbark4(count)};  %blank
+      imagetexB3=Screen('MakeTexture', screen.w, imdataB3(1:iy, 1:ix,:));
+      trectB3=Screen('Rect', imagetexB3);
+      imdataB4=imgblank{stim.matchbark5(count)};  %blank
+      imagetexB4=Screen('MakeTexture', screen.w, imdataB4(1:iy, 1:ix,:));
+      trectB4=Screen('Rect', imagetexB4);
+  end
+ 
+  imdata_xcue=xcue; %tno cue
+  imagetex_xcue=Screen('MakeTexture', screen.w, imdata_xcue(1:cy, 1:cx,:));
+  rectxcue=Screen('Rect', imagetex_xcue);
+  imdata_ucue=ucue; %tno cue
+  imagetex_ucue=Screen('MakeTexture', screen.w, imdata_ucue(1:cyu, 1:cxu,:));
+  rectucue=Screen('Rect', imagetex_ucue);
+  imdata_dcue=dcue; %tno cue
+  imagetex_dcue=Screen('MakeTexture', screen.w, imdata_dcue(1:cyu, 1:cxu,:));
+  rectdcue=Screen('Rect', imagetex_dcue);
+ 
+  if abs(sd-sd2)==0;
+    EEGcue=34;
+  elseif abs(sd-sd2)~=0;
+    EEGcue=35;
+  end
+  if sd2==2;
+    EEGcue=36;
+  end;
+  
+
+ for i=1:param.f_no;
+  %% leave this on screen all the time
+  if i>0 %&& i<param.precuelenF+param.randomtime;
+     Screen('DrawTexture', screen.w, imagetex_xcue,rectxcue,cueloc);
+     Screen('DrawingFinished', screen.windowPtrs);
+  end
+
+  if i==1
+    output.trstart=GetSecs;    % reset these. 
+  
+  end
+  
+
+  %% load the cue image
+ 
+  
+  if i>=param.precuelenF && i<param.cuelenF;
+    if i==param.precuelenF;
+      output.cuestart=GetSecs-output.trstart;
+      %EEG ping
+      %outp(address, 2); %response
+      WaitSecs(screen.fl);
+      %outp(address, 0);  
+
+    end
+    if i==param.cuelenF-1;
+         %outp(address, 11) %cue offset
+           WaitSecs(screen.fl);
+           %outp(address, 0); 
+    end;    
+           
+    if tiles=='6';
+        if hz==0; %%top
+              if sd==0;
+                 Screen('DrawTexture', screen.w, imagetexT,trectT,LT);
+                 Screen('DrawTexture', screen.w, imagetexB,trectB,RT);
+                 Screen('DrawTexture', screen.w, imagetexB1,trectB1,LM);
+                 Screen('DrawTexture', screen.w, imagetexB2,trectB2,RM);
+                 Screen('DrawTexture', screen.w, imagetexB3,trectB3,LB);
+                 Screen('DrawTexture', screen.w, imagetexB4,trectB4,RB);
+                 Screen('DrawingFinished', screen.windowPtrs);
+              elseif sd==1;
+                 Screen('DrawTexture', screen.w, imagetexT,trectT,RT);
+                 Screen('DrawTexture', screen.w, imagetexB,trectB,LT);
+                 Screen('DrawTexture', screen.w, imagetexB1,trectB1,LM);
+                 Screen('DrawTexture', screen.w, imagetexB2,trectB2,RM);
+                 Screen('DrawTexture', screen.w, imagetexB3,trectB3,LB);
+                 Screen('DrawTexture', screen.w, imagetexB4,trectB4,RB);
+                 Screen('DrawingFinished', screen.windowPtrs);
+              end
+       elseif hz==1; %%middle
+              if sd==0;
+                 Screen('DrawTexture', screen.w, imagetexT,trectT,LM);
+                 Screen('DrawTexture', screen.w, imagetexB,trectB,RM);
+                 Screen('DrawTexture', screen.w, imagetexB1,trectB1,LT);
+                 Screen('DrawTexture', screen.w, imagetexB2,trectB2,RT);
+                 Screen('DrawTexture', screen.w, imagetexB3,trectB3,LB);
+                 Screen('DrawTexture', screen.w, imagetexB4,trectB4,RB);
+                 Screen('DrawingFinished', screen.windowPtrs);
+              elseif sd==1;
+                 Screen('DrawTexture', screen.w, imagetexT,trectT,RM);
+                 Screen('DrawTexture', screen.w, imagetexB,trectB,LM);
+                 Screen('DrawTexture', screen.w, imagetexB1,trectB1,LT);
+                 Screen('DrawTexture', screen.w, imagetexB2,trectB2,RT);
+                 Screen('DrawTexture', screen.w, imagetexB3,trectB3,LB);
+                 Screen('DrawTexture', screen.w, imagetexB4,trectB4,RB);
+                 Screen('DrawingFinished', screen.windowPtrs);
+              end
+        else   %bottom
+              if sd==0;
+                 Screen('DrawTexture', screen.w, imagetexT,trectT,LB);
+                 Screen('DrawTexture', screen.w, imagetexB,trectB,RB);
+                 Screen('DrawTexture', screen.w, imagetexB1,trectB1,LM);
+                 Screen('DrawTexture', screen.w, imagetexB2,trectB2,RM);
+                 Screen('DrawTexture', screen.w, imagetexB3,trectB3,LT);
+                 Screen('DrawTexture', screen.w, imagetexB4,trectB4,RT);
+                 Screen('DrawingFinished', screen.windowPtrs);
+              elseif sd==1;
+                 Screen('DrawTexture', screen.w, imagetexT,trectT,RB);
+                 Screen('DrawTexture', screen.w, imagetexB,trectB,LB);
+                 Screen('DrawTexture', screen.w, imagetexB1,trectB1,LM);
+                 Screen('DrawTexture', screen.w, imagetexB2,trectB2,RM);
+                 Screen('DrawTexture', screen.w, imagetexB3,trectB3,LT);
+                 Screen('DrawTexture', screen.w, imagetexB4,trectB4,RT);
+                 Screen('DrawingFinished', screen.windowPtrs);
+
+              end
+        end
+        
+    elseif tiles=='4';
+         if hz==0; %%top
+              if sd==0;
+                 Screen('DrawTexture', screen.w, imagetexT,trectT,LT);
+                 Screen('DrawTexture', screen.w, imagetexB,trectB,RT);
+                 Screen('DrawTexture', screen.w, imagetexB1,trectB1,LB);
+                 Screen('DrawTexture', screen.w, imagetexB2,trectB2,RB);
+                 Screen('DrawingFinished', screen.windowPtrs);
+              elseif sd==1;
+                 Screen('DrawTexture', screen.w, imagetexT,trectT,RT);
+                 Screen('DrawTexture', screen.w, imagetexB,trectB,LT);
+                 Screen('DrawTexture', screen.w, imagetexB1,trectB1,LB);
+                 Screen('DrawTexture', screen.w, imagetexB2,trectB2,RB);
+                 Screen('DrawingFinished', screen.windowPtrs);
+              end
+       elseif hz==2; %%bottom
+              if sd==0;
+                 Screen('DrawTexture', screen.w, imagetexT,trectT,LB);
+                 Screen('DrawTexture', screen.w, imagetexB,trectB,RB);
+                 Screen('DrawTexture', screen.w, imagetexB1,trectB1,LT);
+                 Screen('DrawTexture', screen.w, imagetexB2,trectB2,RT);
+                 Screen('DrawingFinished', screen.windowPtrs);
+              elseif sd==1;
+                 Screen('DrawTexture', screen.w, imagetexT,trectT,RB);
+                 Screen('DrawTexture', screen.w, imagetexB,trectB,LB);
+                 Screen('DrawTexture', screen.w, imagetexB1,trectB1,LT);
+                 Screen('DrawTexture', screen.w, imagetexB2,trectB2,RT);
+                 Screen('DrawingFinished', screen.windowPtrs);
+              end
+         end
+         
+    else
+             
+          if sd==0;
+                 Screen('DrawTexture', screen.w, imagetexT,trectT,LM);
+                 Screen('DrawTexture', screen.w, imagetexB,trectB,RM);
+                 Screen('DrawingFinished', screen.windowPtrs);
+          elseif sd==1;
+                 Screen('DrawTexture', screen.w, imagetexT,trectT,RM);
+                 Screen('DrawTexture', screen.w, imagetexB,trectB,LM);
+                 Screen('DrawingFinished', screen.windowPtrs);
+          end
+    end 
+    end
+  
+
+
+  
+   %%load the stimulus
+
+
+    if i>=param.cuegapF && i<param.targetlengthF;
+         if i==param.cuegapF;
+            output.stimstart=GetSecs-output.trstart;
+%             EEG ping
+            %outp(address, 3); %stim onset
+            WaitSecs(screen.fl);
+            %outp(address, 0);  
+         end
+         
+if letter=='U';
+  
+     if hz==0;
+         if sd2==0;
+            % Pre-load textures
+               Screen('DrawTexture', screen.w, imagetex_ucue,rectucue,CLT);
+               Screen('DrawingFinished', screen.windowPtrs);
+         elseif sd2==1 ;
+              Screen('DrawTexture', screen.w, imagetex_ucue,rectucue,CRT);
+               Screen('DrawingFinished', screen.windowPtrs);
+         end
+     elseif hz==1;
+             if sd2==0;
+            % Pre-load textures
+               Screen('DrawTexture', screen.w, imagetex_ucue,rectucue,CLM);
+               Screen('DrawingFinished', screen.windowPtrs);
+         elseif sd2==1 ;
+              Screen('DrawTexture', screen.w, imagetex_ucue,rectucue,CRM);
+               Screen('DrawingFinished', screen.windowPtrs);
+         end
+     elseif hz==2;
+            if sd2==0;
+            % Pre-load textures
+               Screen('DrawTexture', screen.w, imagetex_ucue,rectucue,CLB);
+               Screen('DrawingFinished', screen.windowPtrs);
+         elseif sd2==1 ;
+              Screen('DrawTexture', screen.w, imagetex_ucue,rectucue,CRB);
+               Screen('DrawingFinished', screen.windowPtrs);
+          end
+     end  
+elseif letter=='D';
+      
+     if hz==0;
+         if sd2==0;
+            % Pre-load textures
+               Screen('DrawTexture', screen.w, imagetex_dcue,rectdcue,CLT);
+               Screen('DrawingFinished', screen.windowPtrs);
+         elseif sd2==1 ;
+              Screen('DrawTexture', screen.w, imagetex_dcue,rectdcue,CRT);
+               Screen('DrawingFinished', screen.windowPtrs);
+         end
+     elseif hz==1;
+             if sd2==0;
+            % Pre-load textures
+               Screen('DrawTexture', screen.w, imagetex_dcue,rectdcue,CLM);
+               Screen('DrawingFinished', screen.windowPtrs);
+         elseif sd2==1 ;
+              Screen('DrawTexture', screen.w, imagetex_dcue,rectdcue,CRM);
+               Screen('DrawingFinished', screen.windowPtrs);
+         end
+     elseif hz==2;
+            if sd2==0;
+            % Pre-load textures
+               Screen('DrawTexture', screen.w, imagetex_dcue,rectdcue,CLB);
+               Screen('DrawingFinished', screen.windowPtrs);
+         elseif sd2==1 ;
+              Screen('DrawTexture', screen.w, imagetex_dcue,rectdcue,CRB);
+               Screen('DrawingFinished', screen.windowPtrs);
+          end
+     end  
+end
+     
+     
+     
+    end
+
+
+         if i==param.targetlengthF-1;
+           %outp(address, 4) %target offset
+           WaitSecs(screen.fl);
+           %outp(address, 0); 
+          Screen('Close', trectT);
+          Screen('Close', trectB);
+         end
+         
+
+    %%% allows you to abort experiment with ESC key
+% % You pressed key 90 which is z
+% % You pressed key 88 which is x
+% % You pressed key 97 which is 1
+% % You pressed key 98 which is 2
+% % You pressed key 99 which is 3
+% % You pressed key 68 which is d
+% % You pressed key 67 which is c
+% % You pressed key 27 which is ESCAPE
+
+    KeyCodes.Escape=27;
+    KeyCodes.Space=32;
+    KeyCodes.x=88;
+    KeyCodes.z=90;
+
+  
+    [Keypr KeyTime Key] = KbCheck;
+    if sum(Key)==1; 
+      if Key(KeyCodes.Escape)==1; 
+        WaitSecs(1);
+        Screen('CloseAll');
+        %outp(address, 126) %response
+        WaitSecs(screen.fl);
+        %outp(address, 0);  
+        disp('You pressed ESC and aborted the program - EEG recording stopped also')
+
+      elseif sum(Key)==1 && Key(KeyCodes.z)==1;
+          output.response=6; %incongruent
+%           output.response=33; %down
+        output.resptime=GetSecs-output.trstart;
+        %% EEG ping
+        %outp(address, 10); %response
+        WaitSecs(screen.fl);
+        %outp(address, 0);  
+        WaitSecs(screen.fl);
+
+      while KbCheck; end
+      else sum(Key)==1 && Key(KeyCodes.x)==1;
+            output.response=5; %congruent
+%           output.response=34; %up 
+          output.resptime=GetSecs-output.trstart;
+
+%          EEG ping
+          %outp(address, 10) %response
+          WaitSecs(screen.fl);
+          %outp(address, 0);  
+          WaitSecs(screen.fl);
+
+        while KbCheck; end
+      end  
+    end 
+    
+    if i==param.f_no-12 && output.response==0;
+        WaitSecs(1);
+        'delay'
+    end
+    
+    %%% get rid of all extra textures.
+       if i==param.f_no-11; %send if it's top or bottom
+          %outp(address,  EEGTB) %response
+          WaitSecs(screen.fl);
+          %outp(address, 0);  
+          WaitSecs(screen.fl);
+            
+     end
+    
+     if i==param.f_no-9; %send if it's a congruent trial or not
+          %outp(address,  letterCresp) %response
+          WaitSecs(screen.fl);
+          %outp(address, 0);  
+          WaitSecs(screen.fl);
+            
+     end
+     if i==param.f_no-7; %send if it's a correct trial
+          if abs(letterCresp-output.response)==0
+            tag=9; %correct
+          else
+            tag=8; %incorrect
+          end
+          %outp(address, tag) %response
+          WaitSecs(screen.fl);
+          %outp(address, 0);  
+          WaitSecs(screen.fl);
+            
+     end
+        if i==param.f_no-5; %sind if side cue was correct 
+          %outp(address, EEGcue) %response
+          WaitSecs(screen.fl);
+          %outp(address, 0);  
+          WaitSecs(screen.fl);
+            
+        end
+        if i==param.f_no-3; % send cue side
+          %outp(address, EEGside) %response
+          WaitSecs(screen.fl);
+          %outp(address, 0);  
+          WaitSecs(screen.fl);
+            
+        end
+        if i==param.f_no-1; %send side stim on. 
+          %outp(address, EEGside2) %response
+          WaitSecs(screen.fl);
+          %outp(address, 0);  
+          WaitSecs(screen.fl);
+            
+     end
+     if i==param.f_no;
+            [windowPtrs1]=Screen('Windows');
+            Screen('Close', [windowPtrs1(3:end)]);
+            windowPtrs2=Screen('Windows');
+            %outp(address, 100) %response
+           WaitSecs(screen.fl);
+           %outp(address, 0); 
+     end
+
+    [VBLTimestamp StimulusOnsetTime FlipTimestamp Missed Beampos]  = Screen('Flip', screen.w);
+ end
+    
+    KeyCodes.one=97;
+    KeyCodes.two=98;
+    KeyCodes.three=99;
+   Screen('TextSize',screen.w, 20);
+   text= 'Guessed!  Fairly Sure    Certain\n\n   1           2         3 \n\n'; 
+   [nx, ny, bbox] = DrawFormattedText(screen.w, text, 'center', 'center', 255, 150);
+   Screen('Flip',screen.w);
+   
+   [Keypr KeyTime Key] = KbCheck;
+   while any(Key) % if already down, wait for release
+         [Keypr KeyTime Key] = KbCheck; end
+   if sum(Key)==1 && Key(KeyCodes.one)==1;
+          output.certain=1;
+    while KbCheck; end
+    elseif sum(Key)==1 && Key(KeyCodes.two)==1;
+         output.certain=2;
+    while KbCheck; end
+    else sum(Key)==1 && Key(KeyCodes.three)==1;
+         output.certain=3;
+    while KbCheck; end   
+              
+    while ~any(Key); [Keypr KeyTime Key] = KbCheck; end; %%%% wait for press
+    while any(Key); [Keypr KeyTime Key]= KbCheck; end; %%% wait for release
+    WaitSecs(1)
+   end
+           
+      
+      expoutput(count,1)=tr;
+      expoutput(count,2)=count;
+      expoutput(count,3)=output.trstart;
+      expoutput(count,4)=output.cuestart;
+      expoutput(count,5)=output.stimstart;
+      expoutput(count,6)=output.resptime;    
+      expoutput(count,7)=output.resptime-output.stimstart;      
+      expoutput(count,8)=letterCresp;
+      expoutput(count,9)=output.response;
+      expoutput(count,10)=sd;
+      expoutput(count,11)=sd2;
+      expoutput(count,12)=abs(sd-sd2); %cuecongruancy
+      expoutput(count,13)=hz;
+      expoutput(count,14)=stim.canny(count); %canny
+      expoutput(count,15)=stim.hmax(count); %hmax
+      expoutput(count,16)=stim.rot(count);
+      expoutput(count,17)=stim.updownorder(count);
+      expoutput(count,18)=letter;
+     
+      
+ end
+
+
+
+%%% ----------------------------------------------------------------------
+%%% make sure you're saving that output!
+%%% ----------------------------------------------------------------------
+
+Screen('TextSize',screen.w, 20);
+text= 'End of test\n\nPlease ask any questions'; 
+[nx, ny, bbox] = DrawFormattedText(screen.w, text, 'center', 'center', 255, 150);
+Screen('Flip',screen.w);
+save(savefile,'expoutput');
+RT=array2table(expoutput);
+RT.Properties.VariableNames = {'tr','count','tri_start','cue_start','stim_start','resptimeABS','responsetime','UDcuecong','response','sidecue','sidestim','cuecong','hz','canny','hmax','rot','cueUD','targUD'};
+ 
+writetable(RT, savefile2);
+totalrun=toc(mouse);
+WaitSecs(6);
+%EEG ping
+%outp(address, 126) %response
+WaitSecs(screen.fl);
+%outp(address, 0);  
+WaitSecs(1);
+Screen('CloseAll');
+toc
+
+%%% ----------------------------------------------------------------------
+%%% say thanks and exit
+%%% ----------------------------------------------------------------------
+
+
